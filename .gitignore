@@ -1,0 +1,12 @@
+.venv/
+.venv-train/
+__pycache__/
+*.pyc
+.direnv/
+result
+data/
+output/
+merged_model/
+*.wav
+*.gguf
+*.gz

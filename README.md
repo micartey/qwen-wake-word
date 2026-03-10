@@ -1,0 +1,107 @@
+# qwen-wake-word
+
+<div align="center">
+    <img src="./.files/qwen-wake-word-banner.png" />
+</div>
+
+<br />
+
+<div align="center">
+    <img
+        src="https://img.shields.io/badge/Written%20in-python-%23F2B655?style=for-the-badge"
+        height="30"
+    />
+    <img
+        src="https://img.shields.io/badge/Finetuned%20Model-qwen3%20asr%200.6b%20english%20v2-8379ec?style=for-the-badge"
+        height="30"
+    />
+</div>
+
+<br />
+
+<p align="center">
+  <a href="#-introduction">Introduction</a> •
+  <a href="#-getting-started">Getting started</a> •
+  <a href="https://huggingface.co/micartey/qwen3-asr-0.6b-english-v2/tree/main">Huggingface</a>
+</p>
+
+## 📚 Introduction
+
+Wake word detection using a finetuned variant of [Qwen3-ASR](https://huggingface.co/Qwen/Qwen3-ASR-0.6B) via [py-qwen3-asr-cpp](https://github.com/femelo/py-qwen3-asr-cpp) and [vad](https://github.com/snakers4/silero-vad) for speech detection.
+The qwen asr model has been force aligned to detect only english.
+For other languages, please take a look at the `finetuning` directory and create a custom finetuned model.
+
+This project designed to run on a Raspberry Pi 5 with near real time performance.
+Meaning it is able to check for a wake word in 1.5 seconds which feels quite natural in a real world example.
+
+### Motivation
+
+Wake word detections require custom models and retraining for different wake words.
+I wanted a more generic approach by using a foundation model which can be finetuned, but generally works out of the box and generically.
+Changing the wake word is mainly a matter of configuration (depending on the name / phrase).
+
+I also wanted to have an alternative to picovoice as they are a very questionable company with [bad reputation](https://www.reddit.com/r/cscareerquestionsCAD/comments/qee7zp/picovoice_vancouver_interview_dlsde_roles/) that does not follow their own ToS and abuses their power on the selection of their users - e.g. by geo-locking accounts that are perfectly ToS complient.
+
+### TODO
+
+- [ ] Create automation for generating the asoundrc config (see below)
+- [ ] API Interface to trigger action, script, service, ...
+- [ ] Improve timeout detection by forcefully kill the ASR thread
+- [ ] Create v3 of finetuned model using 3:1 or higher mix of librispeech and common voice
+
+## 🚀 Getting Started
+
+> [!WARNING]  
+> A Pi 4 does not have sufficient computation power to run this model according to my own testing.
+> This might be due to a flawed setup, but most likely due to the difference in computational power and the use of a more powerful onboard GPU.
+> It might be possible to improve speed even further by using a HALO accelerator - although that is unlikly as my 4080 super isn't that much faster.
+
+- Nix flakes (alternatively run `./setup.sh` on a Pi 5)
+- A microphone
+
+Active cooling is recommended on a pi 5 or similar single board computers / embedded devices.
+Especially to counter possible thermal throttling or damaging of components.
+
+```bash
+git clone https://github.com/micartey/qwen-wake-word.git
+cd qwen-wake-word
+nix develop --command python wake-word.py
+```
+
+Alternativly run:
+
+```bash
+./setup.sh
+source .venv/bin/activate
+python wake_word.py
+```
+
+### Configuration
+
+Edit the constants at the top of `wake_word.py`
+
+| Variable          | Default                          | Description                                   |
+| ----------------- | -------------------------------- | --------------------------------------------- |
+| `WAKE_WORDS`      | `["hey sarah", "hi sarah", ...]` | Wake words / sentences to listen for          |
+| `MAX_DISTANCE`    | `2`                              | Max Levenshtein distance for fuzzy matching   |
+| `CHUNK_SECONDS`   | `1.5`                            | Audio chunk length in seconds                 |
+| `OVERLAP_SECONDS` | `0.75`                           | Overlap between chunks                        |
+| `SAMPLE_RATE`     | `16000`                          | Sample rate of a mic **(DO NOT CHANGE THIS)** |
+| `N_THREADS`       | `2`                              | CPU threads for inference                     |
+
+If you mic does not support a sample rate of 16000 out of the box, you should create a `asoundrc` config.
+
+![img](https://code.micartey.dev/svg?code=Y2F0IDw8ICdFT0YnID4gfi8uYXNvdW5kcmMKcGNtLiFkZWZhdWx0IHsKICAgIHR5cGUgYXN5bQogICAgY2FwdHVyZS5wY20gIm1pY19wbHVnIgp9CgpwY20ubWljX3BsdWcgewogICAgdHlwZSBwbHVnCiAgICBzbGF2ZS5wY20gImh3OjIsMCIKfQpFT0YK)
+
+_(Run `python -m sounddevice` and replace `hw:2,0` with whatevery your mic is listed as)_
+
+### Download Model
+
+The model will be downloaded automatical from huggingface.
+You can also pre-download the finetuned model if the huggingface download doesn't work for you.
+
+```bash
+wget https://cdn.micartey.dev/api/v1/download/blob/qwen3-asr-0.6b-finetuned-q5_k.gguf
+```
+
+Simply place it in the root of the project next to the wake word python script.
