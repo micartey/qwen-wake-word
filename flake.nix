@@ -57,6 +57,52 @@
               echo "Run: python app.py"
             '';
           };
+
+          train = pkgs.mkShell {
+            packages = [
+              python
+              pkgs.uv
+              pkgs.cmake
+              pkgs.gcc
+              pkgs.gnumake
+              pkgs.git
+            ];
+
+            buildInputs = [
+              pkgs.portaudio
+              pkgs.ffmpeg
+              pkgs.libsndfile
+            ];
+
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+              pkgs.portaudio
+              pkgs.stdenv.cc.cc.lib
+              pkgs.zlib
+              pkgs.libsndfile
+            ];
+
+            shellHook = ''
+              if [ ! -d .venv-train ]; then
+                echo "Creating training venv..."
+                uv venv .venv-train
+                source .venv-train/bin/activate
+                uv pip install wheel
+                uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+                uv pip install qwen-asr datasets peft librosa soundfile jiwer gguf safetensors tqdm
+                uv pip install flash-attn --no-build-isolation || echo "flash-attn build failed (optional)"
+              else
+                source .venv-train/bin/activate
+              fi
+              echo "Qwen3-ASR finetuning environment (GPU required)"
+              echo ""
+              echo "Steps:"
+              echo "  1. Prepare data:  python finetuning/prepare_data.py --output_dir ./data"
+              echo "  2. Train LoRA:    python finetuning/train_lora.py --train_file ./data/train.jsonl --eval_file ./data/eval.jsonl"
+              echo "  3. Evaluate:      python finetuning/evaluate.py --model_path Qwen/Qwen3-ASR-0.6B --lora_path ./output/final_lora_adapter --eval_file ./data/eval.jsonl"
+              echo "  4. Merge:         python finetuning/merge_lora.py --lora_path ./output/final_lora_adapter --output_dir ./merged_model"
+              echo "  5. Convert GGUF:  python finetuning/convert_to_gguf.py -i ./merged_model -o ./qwen3-asr-0.6b-finetuned-f16.gguf -t f16"
+            '';
+          };
         }
       );
     };
