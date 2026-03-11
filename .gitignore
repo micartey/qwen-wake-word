@@ -8,3 +8,4 @@ data/
 output/
 merged_model/
 *.wav
+*.gguf

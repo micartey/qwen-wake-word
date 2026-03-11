@@ -25,7 +25,7 @@ source .venv-train/bin/activate
 
 pip install --upgrade pip wheel setuptools
 
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install "torch>=2.6" torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 
 pip install \
     qwen-asr \
@@ -37,6 +37,8 @@ pip install \
     gguf \
     safetensors \
     tqdm
+
+pip uninstall -y torchcodec 2>/dev/null || true
 
 MAX_JOBS=4 pip install flash-attn --no-build-isolation || echo "flash-attn build failed (optional, training will still work)"
 

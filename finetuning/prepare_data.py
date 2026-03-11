@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 import librosa
+import numpy as np
 import soundfile as sf
 from datasets import load_dataset
 
@@ -12,7 +13,13 @@ SAMPLE_RATE = 16000
 
 
 def process_librispeech(split: str, output_dir: Path, max_hours: float | None = None):
-    ds = load_dataset("openslr/librispeech_asr", split=split, trust_remote_code=True)
+    jsonl_cache = output_dir / f".cache_librispeech_{split.replace('.', '_')}.jsonl"
+    if jsonl_cache.exists():
+        print(f"  LibriSpeech {split}: using cached {jsonl_cache}")
+        with open(jsonl_cache) as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    ds = load_dataset("openslr/librispeech_asr", split=split)
 
     wav_dir = output_dir / "wavs" / "librispeech" / split
     wav_dir.mkdir(parents=True, exist_ok=True)
@@ -26,7 +33,7 @@ def process_librispeech(split: str, output_dir: Path, max_hours: float | None = 
             break
 
         audio = row["audio"]
-        arr = audio["array"]
+        arr = np.array(audio["array"], dtype=np.float32)
         sr = audio["sampling_rate"]
 
         if sr != SAMPLE_RATE:
@@ -37,7 +44,8 @@ def process_librispeech(split: str, output_dir: Path, max_hours: float | None = 
             continue
 
         wav_path = wav_dir / f"{i:08d}.wav"
-        sf.write(str(wav_path), arr, SAMPLE_RATE)
+        if not wav_path.exists():
+            sf.write(str(wav_path), arr, SAMPLE_RATE)
 
         text = row["text"].strip()
         entries.append(
@@ -54,20 +62,30 @@ def process_librispeech(split: str, output_dir: Path, max_hours: float | None = 
     print(
         f"  LibriSpeech {split}: {len(entries)} files, {total_seconds / 3600:.1f}h total"
     )
+
+    with open(jsonl_cache, "w") as f:
+        for entry in entries:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
     return entries
 
 
 def process_common_voice(
     lang: str, split: str, output_dir: Path, max_hours: float | None = None
 ):
+    jsonl_cache = output_dir / f".cache_cv_{lang}_{split}.jsonl"
+    if jsonl_cache.exists():
+        print(f"  Common Voice {lang} {split}: using cached {jsonl_cache}")
+        with open(jsonl_cache) as f:
+            return [json.loads(line) for line in f if line.strip()]
+
     lang_map = {"en": "en", "de": "de"}
     cv_lang = lang_map.get(lang, lang)
 
     ds = load_dataset(
-        "mozilla-foundation/common_voice_17_0",
+        "mozilla-foundation/common_voice_16_0",
         cv_lang,
         split=split,
-        trust_remote_code=True,
     )
 
     wav_dir = output_dir / "wavs" / f"common_voice_{lang}" / split
@@ -84,7 +102,7 @@ def process_common_voice(
             break
 
         audio = row["audio"]
-        arr = audio["array"]
+        arr = np.array(audio["array"], dtype=np.float32)
         sr = audio["sampling_rate"]
 
         if sr != SAMPLE_RATE:
@@ -95,7 +113,8 @@ def process_common_voice(
             continue
 
         wav_path = wav_dir / f"{i:08d}.wav"
-        sf.write(str(wav_path), arr, SAMPLE_RATE)
+        if not wav_path.exists():
+            sf.write(str(wav_path), arr, SAMPLE_RATE)
 
         text = row["sentence"].strip()
         if not text:
@@ -117,6 +136,11 @@ def process_common_voice(
     print(
         f"  Common Voice {lang} {split}: {len(entries)} files, {total_seconds / 3600:.1f}h total"
     )
+
+    with open(jsonl_cache, "w") as f:
+        for entry in entries:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
     return entries
 
 
@@ -184,13 +208,14 @@ def main():
         process_librispeech("test.clean", output_dir, max_hours=args.eval_hours)
     )
 
-    print("\n=== Processing Common Voice English ===")
-    train_entries.extend(
-        process_common_voice("en", "train", output_dir, max_hours=args.cv_en_hours)
-    )
-    eval_entries.extend(
-        process_common_voice("en", "test", output_dir, max_hours=args.eval_hours)
-    )
+    if args.cv_en_hours > 0:
+        print("\n=== Processing Common Voice English ===")
+        train_entries.extend(
+            process_common_voice("en", "train", output_dir, max_hours=args.cv_en_hours)
+        )
+        eval_entries.extend(
+            process_common_voice("en", "test", output_dir, max_hours=args.eval_hours)
+        )
 
     if args.cv_de_hours > 0:
         print("\n=== Processing Common Voice German ===")

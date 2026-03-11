@@ -1,7 +1,10 @@
-import sys
+import os
 import queue
+import sys
+
 import numpy as np
 import sounddevice as sd
+from huggingface_hub import hf_hub_download
 from py_qwen3_asr_cpp.model import Qwen3ASRModel
 
 # Available GGUF models (name -> (HuggingFace repo, filename, size)):
@@ -12,11 +15,14 @@ from py_qwen3_asr_cpp.model import Qwen3ASRModel
 # "qwen3-asr-0.6b-q8-0"     ~1.35 GB  (Pi 4 4GB OK)
 # "qwen3-asr-0.6b-f16"      ~1.88 GB  (Pi 4 4GB tight)
 #
+# --- Finetuned (English-optimized, download from HuggingFace) ---
+# "micartey/qwen3-asr-0.6b-english"  ~1.88 GB  (Pi 4 4GB tight)
+#
 # --- 1.7B models (manual download, pass local path) ---
-# "qwen3-asr-1.7b-q4-k-m"   ~1.2 GB   (Pi 4 4GB OK)     [NOT YET AVAILABLE AS GGUF]
 # "qwen3-asr-1.7b-q8-0"     ~3.2 GB   (Pi 5 8GB OK)     FlippyDora/qwen3-asr-1.7b-GGUF
 # "qwen3-asr-1.7b-f16"      ~4.71 GB  (Pi 5 8GB tight)  FlippyDora/qwen3-asr-1.7b-GGUF
-MODEL_ID = "qwen3-asr-0.6b-q5-k-m"
+HF_MODEL = "micartey/qwen3-asr-0.6b-english"
+HF_FILENAME = "qwen3-asr-0.6b-finetuned-q8_0.gguf"
 WAKE_WORD = "sarah"
 SAMPLE_RATE = 16000
 CHUNK_SECONDS = 1.5
@@ -34,9 +40,15 @@ def audio_callback(indata, frames, time, status):
     audio_queue.put(indata[:, 0].copy())
 
 
+def resolve_model():
+    local_path = hf_hub_download(repo_id=HF_MODEL, filename=HF_FILENAME)
+    print(f"Model path: {local_path}")
+    return local_path
+
+
 def load_model():
-    print(f"Loading {MODEL_ID}...")
-    path = MODEL_ID
+    path = "./qwen3-asr-0.6b-finetuned-q4_k.gguf"  # resolve_model()
+    print(f"Loading {HF_MODEL}...")
     model = Qwen3ASRModel(
         asr_model=path,
         n_threads=N_THREADS,
@@ -96,6 +108,7 @@ def main():
                 buffer = buffer[chunk_samples - overlap_samples :]
 
                 energy = np.sqrt(np.mean(audio_segment**2))
+                print(energy)
                 if energy < SILENCE_THRESHOLD:
                     continue
 

@@ -1,0 +1,60 @@
+# Finetuning
+
+```bash
+./setup.py
+source .venv-train/bin/activate
+```
+
+## Generate Data
+
+```bash
+python finetuning/prepare_data.py --output_dir ./data
+```
+
+## Finetune
+
+```bash
+python finetuning/train_full.py \
+  --train_file ./data/train.jsonl \
+  --eval_file ./data/eval.jsonl \
+  --output_dir ./output
+```
+
+## Evaluate
+
+```bash
+python finetuning/evaluate.py \
+  --model_path ./output/final_model \
+  --eval_file ./data/eval.jsonl
+```
+
+The output will look as follows:
+
+```
+=================================================
+Results (968 samples):
+  WER: 0.0361 (3.61%)
+  CER: 0.0135 (1.35%)
+==================================================
+  English WER: 0.0361 (3.61%) [968 samples]
+```
+
+For reference: Whisper large-v3 has a score of `~3.0%` and base qwen3 has a score of `~6%` so this is almost as good as the large whisper model and twice as good as the base qwen3 model.
+
+However, these values are bollocks as the data, as well as testing data, have been generated with the same tool.
+
+## Convert to GGUF
+
+```bash
+python finetuning/convert_to_gguf.py \
+  -i ./output/final_model \
+  -o ./qwen3-asr-0.6b-finetuned-f16.gguf -t f16 # q8_0
+```
+
+## Quantize
+
+```bash
+python finetuning/quantize_gguf.py \
+  ./qwen3-asr-0.6b-finetuned-f16.gguf \
+  ./qwen3-asr-0.6b-finetuned-q5_k.gguf -t q8_0
+```
