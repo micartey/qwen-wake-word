@@ -1,5 +1,9 @@
 # Finetuning
 
+1. Rent a server at: [runpod.io](https://runpod.io?ref=ihq2yc86)
+2. Clone the repository or copy it via scp
+3. Run:
+
 ```bash
 ./setup.py
 source .venv-train/bin/activate

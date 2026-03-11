@@ -22,13 +22,16 @@ from py_qwen3_asr_cpp.model import Qwen3ASRModel
 # "qwen3-asr-1.7b-q8-0"     ~3.2 GB   (Pi 5 8GB OK)     FlippyDora/qwen3-asr-1.7b-GGUF
 # "qwen3-asr-1.7b-f16"      ~4.71 GB  (Pi 5 8GB tight)  FlippyDora/qwen3-asr-1.7b-GGUF
 HF_MODEL = "micartey/qwen3-asr-0.6b-english"
-HF_FILENAME = "qwen3-asr-0.6b-finetuned-q8_0.gguf"
-WAKE_WORD = "sarah"
+HF_FILENAME = (
+    "./qwen3-asr-0.6b-finetuned-q5_k.gguf"  # "qwen3-asr-0.6b-finetuned-q8_0.gguf"
+)
+
 SAMPLE_RATE = 16000
 CHUNK_SECONDS = 1.5
 OVERLAP_SECONDS = 0.75
 SILENCE_THRESHOLD = 0.005
 N_THREADS = 4
+WAKE_WORD = "sarah"
 MAX_DISTANCE = 2
 
 audio_queue = queue.Queue()
@@ -41,13 +44,17 @@ def audio_callback(indata, frames, time, status):
 
 
 def resolve_model():
+    if os.path.isfile(HF_FILENAME):
+        return HF_FILENAME
+
     local_path = hf_hub_download(repo_id=HF_MODEL, filename=HF_FILENAME)
+
     print(f"Model path: {local_path}")
     return local_path
 
 
 def load_model():
-    path = "./qwen3-asr-0.6b-finetuned-q4_k.gguf"  # resolve_model()
+    path = resolve_model()
     print(f"Loading {HF_MODEL}...")
     model = Qwen3ASRModel(
         asr_model=path,
