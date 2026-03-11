@@ -96,11 +96,11 @@
               echo "Qwen3-ASR finetuning environment (GPU required)"
               echo ""
               echo "Steps:"
-              echo "  1. Prepare data:  python finetuning/prepare_data.py --output_dir ./data"
-              echo "  2. Train LoRA:    python finetuning/train_lora.py --train_file ./data/train.jsonl --eval_file ./data/eval.jsonl"
-              echo "  3. Evaluate:      python finetuning/evaluate.py --model_path Qwen/Qwen3-ASR-0.6B --lora_path ./output/final_lora_adapter --eval_file ./data/eval.jsonl"
-              echo "  4. Merge:         python finetuning/merge_lora.py --lora_path ./output/final_lora_adapter --output_dir ./merged_model"
-              echo "  5. Convert GGUF:  python finetuning/convert_to_gguf.py -i ./merged_model -o ./qwen3-asr-0.6b-finetuned-f16.gguf -t f16"
+              echo "  1. Prepare data:   python finetuning/prepare_data.py --output_dir ./data"
+              echo "  2a. Full SFT:      python finetuning/train_full.py --train_file ./data/train.jsonl --eval_file ./data/eval.jsonl"
+              echo "  2b. LoRA (low GPU): python finetuning/train_lora.py --train_file ./data/train.jsonl --eval_file ./data/eval.jsonl"
+              echo "  3. Evaluate:       python finetuning/evaluate.py --model_path ./output/final_model --eval_file ./data/eval.jsonl"
+              echo "  4. Convert GGUF:   python finetuning/convert_to_gguf.py -i ./output/final_model -o ./qwen3-asr-0.6b-finetuned-f16.gguf -t f16"
             '';
           };
         }

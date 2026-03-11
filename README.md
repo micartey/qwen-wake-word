@@ -55,19 +55,26 @@ These are built into `py-qwen3-asr-cpp` and download automatically by name.
 
 ## Finetuning
 
-Finetune Qwen3-ASR-0.6B with LoRA to improve English (and optionally German) accuracy. Requires a CUDA GPU with 8-12 GB VRAM.
+Finetune Qwen3-ASR-0.6B to improve English (and optionally German) precision. Optimized for an A100 80GB SXM (~2h total training time), but works on any CUDA GPU.
 
 ```bash
 # Enter the training environment
 nix develop .#train
 
-# 1. Prepare data (100h LibriSpeech + 50h Common Voice English)
+# 1. Prepare data (100h LibriSpeech + 50h Common Voice English, ~20 GB disk)
 python finetuning/prepare_data.py --output_dir ./data
 
 # Optional: include 20h of German
 python finetuning/prepare_data.py --output_dir ./data --cv_de_hours 20
 
-# 2. Train LoRA
+# 2a. Full SFT (recommended for A100 80GB, ~40min/epoch)
+python finetuning/train_full.py \
+  --train_file ./data/train.jsonl \
+  --eval_file ./data/eval.jsonl \
+  --output_dir ./output \
+  --batch_size 32 --grad_acc 1 --lr 2e-5 --epochs 3
+
+# 2b. LoRA alternative (for consumer GPUs with 8-12 GB VRAM, ~8h/epoch)
 python finetuning/train_lora.py \
   --train_file ./data/train.jsonl \
   --eval_file ./data/eval.jsonl \
@@ -75,19 +82,24 @@ python finetuning/train_lora.py \
   --batch_size 4 --grad_acc 8 --lr 2e-4 --epochs 3
 
 # 3. Evaluate
+#    Full SFT:
+python finetuning/evaluate.py \
+  --model_path ./output/final_model \
+  --eval_file ./data/eval.jsonl
+#    LoRA:
 python finetuning/evaluate.py \
   --model_path Qwen/Qwen3-ASR-0.6B \
   --lora_path ./output/final_lora_adapter \
   --eval_file ./data/eval.jsonl
 
-# 4. Merge LoRA into base model
+# 4. Merge LoRA (skip if using full SFT)
 python finetuning/merge_lora.py \
   --lora_path ./output/final_lora_adapter \
   --output_dir ./merged_model
 
-# 5. Convert to GGUF
+# 5. Convert to GGUF (use ./output/final_model for full SFT, ./merged_model for LoRA)
 python finetuning/convert_to_gguf.py \
-  -i ./merged_model \
+  -i ./output/final_model \
   -o ./qwen3-asr-0.6b-finetuned-f16.gguf \
   -t f16
 
