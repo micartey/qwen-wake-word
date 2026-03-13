@@ -1,6 +1,6 @@
 # Finetuning
 
-1. Rent a server at: [runpod.io](https://runpod.io?ref=ihq2yc86)
+1. Rent a server at [runpod.io](https://runpod.io?ref=ihq2yc86) of kind Ubuntu
 2. Clone the repository or copy it via scp
 3. Run:
 

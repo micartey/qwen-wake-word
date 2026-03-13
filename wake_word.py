@@ -23,16 +23,20 @@ from py_qwen3_asr_cpp.model import Qwen3ASRModel
 # "qwen3-asr-1.7b-f16"      ~4.71 GB  (Pi 5 8GB tight)  FlippyDora/qwen3-asr-1.7b-GGUF
 HF_MODEL = "micartey/qwen3-asr-0.6b-english"
 HF_FILENAME = (
-    "./qwen3-asr-0.6b-finetuned-q5_k.gguf"  # "qwen3-asr-0.6b-finetuned-q8_0.gguf"
+    # "./qwen3-asr-0.6b-finetuned-q5_k.gguf"  # "qwen3-asr-0.6b-finetuned-q8_0.gguf"
+    "qwen3-asr-0.6b-q4-k-m"
 )
 
-SAMPLE_RATE = 16000
+SAMPLE_RATE = 16000  # arecord -l && arecord -D hw:1,0 --dump-hw-params
 CHUNK_SECONDS = 1.5
 OVERLAP_SECONDS = 0.75
-SILENCE_THRESHOLD = 0.005
-N_THREADS = 4
+N_THREADS = 10
 WAKE_WORD = "sarah"
 MAX_DISTANCE = 2
+
+NOISE_MULTIPLIER = 3.0
+NOISE_FLOOR = 0.002
+NOISE_ADAPT_RATE = 0.05
 
 audio_queue = queue.Queue()
 
@@ -44,13 +48,14 @@ def audio_callback(indata, frames, time, status):
 
 
 def resolve_model():
-    if os.path.isfile(HF_FILENAME):
-        return HF_FILENAME
-
-    local_path = hf_hub_download(repo_id=HF_MODEL, filename=HF_FILENAME)
-
-    print(f"Model path: {local_path}")
-    return local_path
+    # if os.path.isfile(HF_FILENAME):
+    #     return HF_FILENAME
+    #
+    # local_path = hf_hub_download(repo_id=HF_MODEL, filename=HF_FILENAME)
+    #
+    # print(f"Model path: {local_path}")
+    # return local_path
+    return HF_FILENAME
 
 
 def load_model():
@@ -86,12 +91,19 @@ def check_wake_word(text):
     return False
 
 
+def rms(audio):
+    return np.sqrt(np.mean(audio**2))
+
+
 def main():
     model = load_model()
 
     chunk_samples = int(CHUNK_SECONDS * SAMPLE_RATE)
     overlap_samples = int(OVERLAP_SECONDS * SAMPLE_RATE)
+    stream_blocksize = int(SAMPLE_RATE * 0.5)
     buffer = np.zeros(0, dtype=np.float32)
+    noise_rms = NOISE_FLOOR
+    threshold = NOISE_FLOOR
 
     print(f"Listening for wake word: '{WAKE_WORD}'")
     print("Speak into the microphone... (Ctrl+C to quit)")
@@ -100,7 +112,7 @@ def main():
         samplerate=SAMPLE_RATE,
         channels=1,
         dtype="float32",
-        blocksize=int(SAMPLE_RATE * 0.5),
+        blocksize=stream_blocksize,
         callback=audio_callback,
     ):
         try:
@@ -114,9 +126,13 @@ def main():
                 audio_segment = buffer[:chunk_samples]
                 buffer = buffer[chunk_samples - overlap_samples :]
 
-                energy = np.sqrt(np.mean(audio_segment**2))
-                print(energy)
-                if energy < SILENCE_THRESHOLD:
+                energy = rms(audio_segment)
+
+                if energy < threshold:
+                    print(energy)
+                    if energy < noise_rms * 1.5:
+                        noise_rms += NOISE_ADAPT_RATE * (energy - noise_rms)
+                        threshold = max(noise_rms * NOISE_MULTIPLIER, NOISE_FLOOR)
                     continue
 
                 result = model.transcribe(audio_segment)

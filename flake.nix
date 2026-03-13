@@ -33,7 +33,7 @@
             ];
 
             buildInputs = [
-              pkgs.portaudio
+              pkgs.portaudio # sudo apt install portaudio19-dev
               pkgs.ffmpeg
             ];
 
@@ -54,7 +54,7 @@
                 source .venv/bin/activate
               fi
               echo "Qwen3-ASR wake word detection environment"
-              echo "Run: python app.py"
+              echo "Run: python wake_word.py"
             '';
           };
 
