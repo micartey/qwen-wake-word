@@ -1,12 +1,12 @@
 import os
 
 # These MUST remain at the very top to throttle backend C++ libraries before initialization
-os.environ["OMP_NUM_THREADS"] = "2"
-os.environ["MKL_NUM_THREADS"] = "2"
+os.environ["OMP_NUM_THREADS"] = "4"
+os.environ["MKL_NUM_THREADS"] = "4"
 
 import torch
 
-torch.set_num_threads(2)
+torch.set_num_threads(4)
 
 import queue
 import sys
@@ -23,8 +23,8 @@ SAMPLE_RATE = 16000
 CHUNK_SECONDS = 1.5
 OVERLAP_SECONDS = 0.75
 N_THREADS = 2  # Reduced to prevent 100% CPU lockups on Pi 5
-WAKE_WORD = "sarah"
-MAX_DISTANCE = 2
+WAKE_WORD = "hey sarah"
+MAX_DISTANCE = 4
 
 audio_queue = queue.Queue()
 
@@ -83,9 +83,18 @@ def levenshtein(a, b):
 
 
 def check_wake_word(text):
-    for word in text.lower().split():
-        if levenshtein(word, WAKE_WORD) <= MAX_DISTANCE:
+    target = WAKE_WORD.lower()
+    target_words_count = len(target.split())
+    transcribed_words = text.lower().split()
+
+    if len(transcribed_words) < target_words_count:
+        return levenshtein(" ".join(transcribed_words), target) <= MAX_DISTANCE
+
+    for i in range(len(transcribed_words) - target_words_count + 1):
+        window = " ".join(transcribed_words[i : i + target_words_count])
+        if levenshtein(window, target) <= MAX_DISTANCE:
             return True
+
     return False
 
 
@@ -100,13 +109,14 @@ def main():
     print(f"Listening for wake word: '{WAKE_WORD}'")
     print("Speak into the microphone... (Ctrl+C to quit)")
 
+    # Bind the stream to a variable so we can control it
     with sd.InputStream(
         samplerate=SAMPLE_RATE,
         channels=1,
         dtype="float32",
         blocksize=int(SAMPLE_RATE * 0.5),
         callback=audio_callback,
-    ):
+    ) as stream:
         try:
             while True:
                 chunk = audio_queue.get()
@@ -116,7 +126,6 @@ def main():
                     continue
 
                 audio_segment = buffer[:chunk_samples]
-                buffer = buffer[chunk_samples - overlap_samples :]
 
                 # 1. Gatekeeper: Check for actual human speech first
                 audio_tensor = torch.from_numpy(audio_segment)
@@ -126,12 +135,25 @@ def main():
                 )
 
                 if not speech_timestamps:
+                    buffer = buffer[chunk_samples - overlap_samples :]
                     continue
 
                 print("Speech detected, running ASR...")
 
+                # --- FIX: Stop microphone stream to prevent overflow ---
+                stream.stop()
+
                 # 2. Execution: Only runs if human speech is detected
                 result = asr_model.transcribe(audio_segment)
+
+                # Clear any lingering audio in the queue and reset buffer
+                while not audio_queue.empty():
+                    audio_queue.get()
+                buffer = np.zeros(0, dtype=np.float32)
+
+                # --- FIX: Resume microphone stream ---
+                stream.start()
+
                 if not result:
                     continue
 
