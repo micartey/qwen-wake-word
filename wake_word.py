@@ -10,6 +10,8 @@ torch.set_num_threads(4)
 
 import queue
 import sys
+import threading
+import time
 
 import numpy as np
 import sounddevice as sd
@@ -25,6 +27,7 @@ OVERLAP_SECONDS = 0.75
 N_THREADS = 2  # Reduced to prevent 100% CPU lockups on Pi 5
 WAKE_WORD = "hey sarah"
 MAX_DISTANCE = 4
+ASR_TIMEOUT = 5
 
 audio_queue = queue.Queue()
 
@@ -63,7 +66,6 @@ def load_vad_model():
         trust_repo=True,
     )
     print("VAD Model loaded.")
-    # utils[0] is the get_speech_timestamps function
     return model, utils[0]
 
 
@@ -80,6 +82,33 @@ def levenshtein(a, b):
             curr[i] = min(curr[i - 1] + 1, prev[i] + 1, prev[i - 1] + cost)
         prev = curr
     return prev[n]
+
+
+def transcribe_with_timeout(asr_model, audio_segment, timeout=ASR_TIMEOUT):
+    result_holder = [None, None]
+
+    def _worker():
+        try:
+            result_holder[0] = asr_model.transcribe(audio_segment)
+        except Exception as e:
+            result_holder[1] = e
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+
+    # join() inherently handles the timeout without needing signals
+    thread.join(timeout)
+
+    if thread.is_alive():
+        print(f"ASR timed out after {timeout}s, skipping result...")
+        # Note: The daemon thread remains alive in the background.
+        # If the C++ extension is hard-locked, it will continue consuming CPU.
+        return None
+
+    if result_holder[1] is not None:
+        raise result_holder[1]
+
+    return result_holder[0]
 
 
 def check_wake_word(text):
@@ -109,7 +138,6 @@ def main():
     print(f"Listening for wake word: '{WAKE_WORD}'")
     print("Speak into the microphone... (Ctrl+C to quit)")
 
-    # Bind the stream to a variable so we can control it
     with sd.InputStream(
         samplerate=SAMPLE_RATE,
         channels=1,
@@ -127,7 +155,6 @@ def main():
 
                 audio_segment = buffer[:chunk_samples]
 
-                # 1. Gatekeeper: Check for actual human speech first
                 audio_tensor = torch.from_numpy(audio_segment)
 
                 speech_timestamps = get_speech_timestamps(
@@ -140,18 +167,17 @@ def main():
 
                 print("Speech detected, running ASR...")
 
-                # --- FIX: Stop microphone stream to prevent overflow ---
                 stream.stop()
 
-                # 2. Execution: Only runs if human speech is detected
-                result = asr_model.transcribe(audio_segment)
+                start_time = time.time()
+                result = transcribe_with_timeout(asr_model, audio_segment)
+                elapsed_time = time.time() - start_time
+                print(f"ASR took {elapsed_time:.2f} seconds.")
 
-                # Clear any lingering audio in the queue and reset buffer
                 while not audio_queue.empty():
                     audio_queue.get()
                 buffer = np.zeros(0, dtype=np.float32)
 
-                # --- FIX: Resume microphone stream ---
                 stream.start()
 
                 if not result:

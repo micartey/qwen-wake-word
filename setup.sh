@@ -14,7 +14,7 @@ export PATH=/home/pi/.local/bin:$PATH # To make uv available in current bash
 uv venv .venv
 source .venv/bin/activate
 
-uv pip install sounddevice numpy huggingface-hub torch torchaudio pyinstaller nuitka
+uv pip install sounddevice numpy huggingface-hub torch torchaudio
 uv pip install "py-qwen3-asr-cpp @ git+https://github.com/femelo/py-qwen3-asr-cpp"
 
 # CMAKE_ARGS="-DGGML_NATIVE=OFF -DGGML_ARM_DOTPROD=OFF -DGGML_ARM_I8MM=OFF" uv pip install --reinstall --no-cache "py-qwen3-asr-cpp @ git+https://github.com/femelo/py-qwen3-asr-cpp"
@@ -29,6 +29,6 @@ pcm.!default {
 
 pcm.mic_plug {
     type plug
-    slave.pcm "hw:2,0"
+    slave.pcm "hw:0,0"
 }
 EOF
