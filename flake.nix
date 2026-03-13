@@ -48,7 +48,7 @@
                 echo "Creating venv and installing dependencies..."
                 uv venv .venv
                 source .venv/bin/activate
-                uv pip install sounddevice numpy huggingface-hub
+                uv pip install sounddevice numpy huggingface-hub torch torchaudio
                 uv pip install "py-qwen3-asr-cpp @ git+https://github.com/femelo/py-qwen3-asr-cpp"
               else
                 source .venv/bin/activate

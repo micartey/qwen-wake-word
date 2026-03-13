@@ -1,4 +1,13 @@
 import os
+
+# These MUST remain at the very top to throttle backend C++ libraries before initialization
+os.environ["OMP_NUM_THREADS"] = "4"
+os.environ["MKL_NUM_THREADS"] = "4"
+
+import torch
+
+torch.set_num_threads(4)
+
 import queue
 import sys
 
@@ -7,36 +16,15 @@ import sounddevice as sd
 from huggingface_hub import hf_hub_download
 from py_qwen3_asr_cpp.model import Qwen3ASRModel
 
-# Available GGUF models (name -> (HuggingFace repo, filename, size)):
-#
-# --- 0.6B models (built-in, auto-download via py-qwen3-asr-cpp) ---
-# "qwen3-asr-0.6b-q4-k-m"   ~685 MB   (Pi 4 4GB OK)
-# "qwen3-asr-0.6b-q5-k-m"   ~800 MB   (Pi 4 4GB OK)
-# "qwen3-asr-0.6b-q8-0"     ~1.35 GB  (Pi 4 4GB OK)
-# "qwen3-asr-0.6b-f16"      ~1.88 GB  (Pi 4 4GB tight)
-#
-# --- Finetuned (English-optimized, download from HuggingFace) ---
-# "micartey/qwen3-asr-0.6b-english"  ~1.88 GB  (Pi 4 4GB tight)
-#
-# --- 1.7B models (manual download, pass local path) ---
-# "qwen3-asr-1.7b-q8-0"     ~3.2 GB   (Pi 5 8GB OK)     FlippyDora/qwen3-asr-1.7b-GGUF
-# "qwen3-asr-1.7b-f16"      ~4.71 GB  (Pi 5 8GB tight)  FlippyDora/qwen3-asr-1.7b-GGUF
 HF_MODEL = "micartey/qwen3-asr-0.6b-english"
-HF_FILENAME = (
-    # "./qwen3-asr-0.6b-finetuned-q5_k.gguf"  # "qwen3-asr-0.6b-finetuned-q8_0.gguf"
-    "qwen3-asr-0.6b-q4-k-m"
-)
+HF_FILENAME = "./qwen3-asr-0.6b-finetuned-q5_k.gguf"
 
-SAMPLE_RATE = 16000  # arecord -l && arecord -D hw:1,0 --dump-hw-params
+SAMPLE_RATE = 16000
 CHUNK_SECONDS = 1.5
 OVERLAP_SECONDS = 0.75
-N_THREADS = 10
-WAKE_WORD = "sarah"
-MAX_DISTANCE = 2
-
-NOISE_MULTIPLIER = 3.0
-NOISE_FLOOR = 0.002
-NOISE_ADAPT_RATE = 0.05
+N_THREADS = 2  # Reduced to prevent 100% CPU lockups on Pi 5
+WAKE_WORD = "hey sarah"
+MAX_DISTANCE = 4
 
 audio_queue = queue.Queue()
 
@@ -48,25 +36,35 @@ def audio_callback(indata, frames, time, status):
 
 
 def resolve_model():
-    # if os.path.isfile(HF_FILENAME):
-    #     return HF_FILENAME
-    #
-    # local_path = hf_hub_download(repo_id=HF_MODEL, filename=HF_FILENAME)
-    #
-    # print(f"Model path: {local_path}")
-    # return local_path
-    return HF_FILENAME
+    if os.path.isfile(HF_FILENAME):
+        return HF_FILENAME
+    local_path = hf_hub_download(repo_id=HF_MODEL, filename=HF_FILENAME)
+    print(f"Model path: {local_path}")
+    return local_path
 
 
-def load_model():
+def load_asr_model():
     path = resolve_model()
-    print(f"Loading {HF_MODEL}...")
+    print(f"Loading {HF_MODEL} on 2 threads...")
     model = Qwen3ASRModel(
         asr_model=path,
         n_threads=N_THREADS,
     )
-    print("Model loaded.")
+    print("ASR Model loaded.")
     return model
+
+
+def load_vad_model():
+    print("Loading Silero VAD...")
+    model, utils = torch.hub.load(
+        repo_or_dir="snakers4/silero-vad",
+        model="silero_vad",
+        force_reload=False,
+        trust_repo=True,
+    )
+    print("VAD Model loaded.")
+    # utils[0] is the get_speech_timestamps function
+    return model, utils[0]
 
 
 def levenshtein(a, b):
@@ -85,36 +83,40 @@ def levenshtein(a, b):
 
 
 def check_wake_word(text):
-    for word in text.lower().split():
-        if levenshtein(word, WAKE_WORD) <= MAX_DISTANCE:
+    target = WAKE_WORD.lower()
+    target_words_count = len(target.split())
+    transcribed_words = text.lower().split()
+
+    if len(transcribed_words) < target_words_count:
+        return levenshtein(" ".join(transcribed_words), target) <= MAX_DISTANCE
+
+    for i in range(len(transcribed_words) - target_words_count + 1):
+        window = " ".join(transcribed_words[i : i + target_words_count])
+        if levenshtein(window, target) <= MAX_DISTANCE:
             return True
+
     return False
 
 
-def rms(audio):
-    return np.sqrt(np.mean(audio**2))
-
-
 def main():
-    model = load_model()
+    vad_model, get_speech_timestamps = load_vad_model()
+    asr_model = load_asr_model()
 
     chunk_samples = int(CHUNK_SECONDS * SAMPLE_RATE)
     overlap_samples = int(OVERLAP_SECONDS * SAMPLE_RATE)
-    stream_blocksize = int(SAMPLE_RATE * 0.5)
     buffer = np.zeros(0, dtype=np.float32)
-    noise_rms = NOISE_FLOOR
-    threshold = NOISE_FLOOR
 
     print(f"Listening for wake word: '{WAKE_WORD}'")
     print("Speak into the microphone... (Ctrl+C to quit)")
 
+    # Bind the stream to a variable so we can control it
     with sd.InputStream(
         samplerate=SAMPLE_RATE,
         channels=1,
         dtype="float32",
-        blocksize=stream_blocksize,
+        blocksize=int(SAMPLE_RATE * 0.5),
         callback=audio_callback,
-    ):
+    ) as stream:
         try:
             while True:
                 chunk = audio_queue.get()
@@ -124,18 +126,34 @@ def main():
                     continue
 
                 audio_segment = buffer[:chunk_samples]
-                buffer = buffer[chunk_samples - overlap_samples :]
 
-                energy = rms(audio_segment)
+                # 1. Gatekeeper: Check for actual human speech first
+                audio_tensor = torch.from_numpy(audio_segment)
 
-                if energy < threshold:
-                    print(energy)
-                    if energy < noise_rms * 1.5:
-                        noise_rms += NOISE_ADAPT_RATE * (energy - noise_rms)
-                        threshold = max(noise_rms * NOISE_MULTIPLIER, NOISE_FLOOR)
+                speech_timestamps = get_speech_timestamps(
+                    audio_tensor, vad_model, sampling_rate=SAMPLE_RATE
+                )
+
+                if not speech_timestamps:
+                    buffer = buffer[chunk_samples - overlap_samples :]
                     continue
 
-                result = model.transcribe(audio_segment)
+                print("Speech detected, running ASR...")
+
+                # --- FIX: Stop microphone stream to prevent overflow ---
+                stream.stop()
+
+                # 2. Execution: Only runs if human speech is detected
+                result = asr_model.transcribe(audio_segment)
+
+                # Clear any lingering audio in the queue and reset buffer
+                while not audio_queue.empty():
+                    audio_queue.get()
+                buffer = np.zeros(0, dtype=np.float32)
+
+                # --- FIX: Resume microphone stream ---
+                stream.start()
+
                 if not result:
                     continue
 

@@ -60,5 +60,5 @@ python finetuning/convert_to_gguf.py \
 ```bash
 python finetuning/quantize_gguf.py \
   ./qwen3-asr-0.6b-finetuned-f16.gguf \
-  ./qwen3-asr-0.6b-finetuned-q5_k.gguf -t q8_0
+  ./qwen3-asr-0.6b-finetuned-q5_k.gguf -t q5_k
 ```
