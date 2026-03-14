@@ -27,7 +27,7 @@ OVERLAP_SECONDS = 0.75
 N_THREADS = 2  # Reduced to prevent 100% CPU lockups on Pi 5
 WAKE_WORD = "hey sarah"
 MAX_DISTANCE = 4
-ASR_TIMEOUT = 5
+ASR_TIMEOUT = 1
 
 audio_queue = queue.Queue()
 
@@ -84,45 +84,39 @@ def levenshtein(a, b):
     return prev[n]
 
 
-def transcribe_with_timeout(asr_model, audio_segment, timeout=ASR_TIMEOUT):
-    result_holder = [None, None]
+import signal
 
-    def _worker():
-        try:
-            result_holder[0] = asr_model.transcribe(audio_segment)
-        except Exception as e:
-            result_holder[1] = e
+class ASRTimeoutException(Exception):
+    pass
 
-    thread = threading.Thread(target=_worker, daemon=True)
-    thread.start()
+def _timeout_handler(signum, frame):
+    raise ASRTimeoutException()
 
-    # join() inherently handles the timeout without needing signals
-    thread.join(timeout)
-
-    if thread.is_alive():
+def transcribe_with_timeout(asr_model, audio_segment, timeout=5):
+    # Store the original handler and set the new one
+    original_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+    
+    # Schedule the alarm
+    signal.alarm(timeout)
+    
+    try:
+        result = asr_model.transcribe(audio_segment)
+        return result
+    except ASRTimeoutException:
         print(f"ASR timed out after {timeout}s, skipping result...")
-        # Note: The daemon thread remains alive in the background.
-        # If the C++ extension is hard-locked, it will continue consuming CPU.
         return None
-
-    if result_holder[1] is not None:
-        raise result_holder[1]
-
-    return result_holder[0]
-
+    finally:
+        # Cancel the alarm immediately after success or failure
+        signal.alarm(0)
+        # Safely restore the original signal handler
+        signal.signal(signal.SIGALRM, original_handler)
 
 def check_wake_word(text):
     target = WAKE_WORD.lower()
-    target_words_count = len(target.split())
-    transcribed_words = text.lower().split()
+    transcribed_words = text.lower()
 
-    if len(transcribed_words) < target_words_count:
-        return levenshtein(" ".join(transcribed_words), target) <= MAX_DISTANCE
-
-    for i in range(len(transcribed_words) - target_words_count + 1):
-        window = " ".join(transcribed_words[i : i + target_words_count])
-        if levenshtein(window, target) <= MAX_DISTANCE:
-            return True
+    if levenshtein(target, transcribed_words) < MAX_DISTANCE:
+        return True
 
     return False
 
@@ -162,39 +156,4 @@ def main():
                 )
 
                 if not speech_timestamps:
-                    buffer = buffer[chunk_samples - overlap_samples :]
-                    continue
-
-                print("Speech detected, running ASR...")
-
-                stream.stop()
-
-                start_time = time.time()
-                result = transcribe_with_timeout(asr_model, audio_segment)
-                elapsed_time = time.time() - start_time
-                print(f"ASR took {elapsed_time:.2f} seconds.")
-
-                while not audio_queue.empty():
-                    audio_queue.get()
-                buffer = np.zeros(0, dtype=np.float32)
-
-                stream.start()
-
-                if not result:
-                    continue
-
-                text = result.text.strip()
-                if not text:
-                    continue
-
-                print(f"  [{text}]")
-
-                if check_wake_word(text):
-                    print(">>> Hello World! <<<")
-
-        except KeyboardInterrupt:
-            print("\nStopped.")
-
-
-if __name__ == "__main__":
-    main()
+     
