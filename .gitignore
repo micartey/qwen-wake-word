@@ -9,3 +9,4 @@ output/
 merged_model/
 *.wav
 *.gguf
+*.gz

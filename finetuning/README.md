@@ -11,6 +11,14 @@ source .venv-train/bin/activate
 
 ## Generate Data
 
+You can download the dataset using wget:
+
+```bash
+wget https://cdn.micartey.dev/api/v1/download/blob/qwen3-dataset.tar.gz
+```
+
+Or generate one from scratch:
+
 ```bash
 python finetuning/prepare_data.py --output_dir ./data
 ```
