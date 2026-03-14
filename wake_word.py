@@ -9,6 +9,8 @@ import torch
 torch.set_num_threads(4)
 
 import queue
+import signal
+import string
 import sys
 import threading
 import time
@@ -18,15 +20,15 @@ import sounddevice as sd
 from huggingface_hub import hf_hub_download
 from py_qwen3_asr_cpp.model import Qwen3ASRModel
 
-HF_MODEL = "micartey/qwen3-asr-0.6b-english"
+HF_MODEL = "micartey/qwen3-asr-0.6b-english-v2"
 HF_FILENAME = "./qwen3-asr-0.6b-finetuned-q5_k.gguf"
 
 SAMPLE_RATE = 16000
 CHUNK_SECONDS = 1.5
 OVERLAP_SECONDS = 0.75
-N_THREADS = 2  # Reduced to prevent 100% CPU lockups on Pi 5
-WAKE_WORD = "hey sarah"
-MAX_DISTANCE = 4
+N_THREADS = 2
+WAKE_WORDS = ["hey sarah", "hi sarah", "hello sarah"]
+MAX_DISTANCE = 2
 ASR_TIMEOUT = 1
 
 audio_queue = queue.Queue()
@@ -84,21 +86,21 @@ def levenshtein(a, b):
     return prev[n]
 
 
-import signal
-
 class ASRTimeoutException(Exception):
     pass
+
 
 def _timeout_handler(signum, frame):
     raise ASRTimeoutException()
 
+
 def transcribe_with_timeout(asr_model, audio_segment, timeout=5):
     # Store the original handler and set the new one
     original_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-    
+
     # Schedule the alarm
     signal.alarm(timeout)
-    
+
     try:
         result = asr_model.transcribe(audio_segment)
         return result
@@ -111,12 +113,18 @@ def transcribe_with_timeout(asr_model, audio_segment, timeout=5):
         # Safely restore the original signal handler
         signal.signal(signal.SIGALRM, original_handler)
 
-def check_wake_word(text):
-    target = WAKE_WORD.lower()
-    transcribed_words = text.lower()
 
-    if levenshtein(target, transcribed_words) < MAX_DISTANCE:
-        return True
+def check_wake_word(text):
+    transcribed_words = text.lower()
+    clean_transcribed_words = transcribed_words.translate(
+        str.maketrans("", "", string.punctuation)
+    )
+
+    for wake_word in WAKE_WORDS:
+        target = wake_word.lower()
+
+        if levenshtein(target, clean_transcribed_words) < MAX_DISTANCE:
+            return True
 
     return False
 
@@ -129,7 +137,7 @@ def main():
     overlap_samples = int(OVERLAP_SECONDS * SAMPLE_RATE)
     buffer = np.zeros(0, dtype=np.float32)
 
-    print(f"Listening for wake word: '{WAKE_WORD}'")
+    print(f"Listening for wake word: '{WAKE_WORDS}'")
     print("Speak into the microphone... (Ctrl+C to quit)")
 
     with sd.InputStream(
@@ -156,4 +164,39 @@ def main():
                 )
 
                 if not speech_timestamps:
-     
+                    buffer = buffer[chunk_samples - overlap_samples :]
+                    continue
+
+                print("Speech detected, running ASR...")
+
+                stream.stop()
+
+                start_time = time.time()
+                result = transcribe_with_timeout(asr_model, audio_segment)
+                elapsed_time = time.time() - start_time
+                print(f"ASR took {elapsed_time:.2f} seconds.")
+
+                while not audio_queue.empty():
+                    audio_queue.get()
+                buffer = np.zeros(0, dtype=np.float32)
+
+                stream.start()
+
+                if not result:
+                    continue
+
+                text = result.text.strip()
+                if not text:
+                    continue
+
+                print(f"  [{text}]")
+
+                if check_wake_word(text):
+                    print(">>> Hello World! <<<")
+
+        except KeyboardInterrupt:
+            print("\nStopped.")
+
+
+if __name__ == "__main__":
+    main()

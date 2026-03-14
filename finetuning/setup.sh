@@ -8,7 +8,8 @@ apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv python3-dev \
     git git-lfs cmake gcc g++ make \
     libsndfile1 ffmpeg \
-    wget curl
+    wget curl \
+    language-pack-en
 
 git lfs install
 
@@ -36,11 +37,12 @@ pip install \
     jiwer \
     gguf \
     safetensors \
-    tqdm
+    tqdm \
+    ninja
 
 pip uninstall -y torchcodec 2>/dev/null || true
 
-MAX_JOBS=4 pip install flash-attn --no-build-isolation || echo "flash-attn build failed (optional, training will still work)"
+pip install flash-attn --no-build-isolation || echo "flash-attn build failed (optional, training will still work)"
 
 echo ""
 echo "=== Setup complete ==="

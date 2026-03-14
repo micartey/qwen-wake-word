@@ -15,12 +15,20 @@ You can download the dataset using wget:
 
 ```bash
 wget https://cdn.micartey.dev/api/v1/download/blob/qwen3-dataset.tar.gz
+tar -xzf qwen3-dataset.tar.gz
+
+# Replace absolute paths
+sed -i 's|/home/daniel/Workspace/Python|/root|g' ./data/train.jsonl
+sed -i 's|/home/daniel/Workspace/Python|/root|g' ./data/eval.jsonl
 ```
 
 Or generate one from scratch:
 
 ```bash
-python finetuning/prepare_data.py --output_dir ./data
+python finetuning/prepare_data.py \
+    --librispeech_hours 360 \
+    --librispeech_split train.clean.360 \
+    --output_dir ./data
 ```
 
 ## Finetune
