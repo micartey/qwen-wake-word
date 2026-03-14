@@ -66,6 +66,7 @@
               pkgs.gcc
               pkgs.gnumake
               pkgs.git
+              pkgs.ffmpeg
             ];
 
             buildInputs = [
@@ -79,6 +80,7 @@
               pkgs.stdenv.cc.cc.lib
               pkgs.zlib
               pkgs.libsndfile
+              pkgs.ffmpeg
             ];
 
             shellHook = ''
@@ -87,20 +89,16 @@
                 uv venv .venv-train
                 source .venv-train/bin/activate
                 uv pip install wheel
-                uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-                uv pip install qwen-asr datasets peft librosa soundfile jiwer gguf safetensors tqdm
+                uv pip install torchcodec
+                uv pip intsall "datasets<4.0.0"
+                uv pip install "torch>=2.6" torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+                uv pip install qwen-asr peft librosa soundfile jiwer gguf safetensors tqdm
                 uv pip install flash-attn --no-build-isolation || echo "flash-attn build failed (optional)"
               else
                 source .venv-train/bin/activate
               fi
-              echo "Qwen3-ASR finetuning environment (GPU required)"
-              echo ""
-              echo "Steps:"
-              echo "  1. Prepare data:   python finetuning/prepare_data.py --output_dir ./data"
-              echo "  2a. Full SFT:      python finetuning/train_full.py --train_file ./data/train.jsonl --eval_file ./data/eval.jsonl"
-              echo "  2b. LoRA (low GPU): python finetuning/train_lora.py --train_file ./data/train.jsonl --eval_file ./data/eval.jsonl"
-              echo "  3. Evaluate:       python finetuning/evaluate.py --model_path ./output/final_model --eval_file ./data/eval.jsonl"
-              echo "  4. Convert GGUF:   python finetuning/convert_to_gguf.py -i ./output/final_model -o ./qwen3-asr-0.6b-finetuned-f16.gguf -t f16"
+
+              echo "Make sure to export your hugging face access token: HF_TOKEN"
             '';
           };
         }

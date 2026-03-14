@@ -8,7 +8,6 @@ import numpy as np
 import soundfile as sf
 from datasets import load_dataset
 
-
 SAMPLE_RATE = 16000
 
 
@@ -83,9 +82,7 @@ def process_common_voice(
     cv_lang = lang_map.get(lang, lang)
 
     ds = load_dataset(
-        "mozilla-foundation/common_voice_16_0",
-        cv_lang,
-        split=split,
+        "fsicoli/common_voice_16_0", cv_lang, split=split, trust_remote_code=True
     )
 
     wav_dir = output_dir / "wavs" / f"common_voice_{lang}" / split
