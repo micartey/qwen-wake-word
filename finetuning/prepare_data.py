@@ -195,15 +195,16 @@ def main():
     train_entries = []
     eval_entries = []
 
-    print("=== Processing LibriSpeech (English) ===")
-    train_entries.extend(
-        process_librispeech(
-            args.librispeech_split, output_dir, max_hours=args.librispeech_hours
+    if args.librispeech_hours > 0:
+        print("=== Processing LibriSpeech (English) ===")
+        train_entries.extend(
+            process_librispeech(
+                args.librispeech_split, output_dir, max_hours=args.librispeech_hours
+            )
         )
-    )
-    eval_entries.extend(
-        process_librispeech("test.clean", output_dir, max_hours=args.eval_hours)
-    )
+        eval_entries.extend(
+            process_librispeech("test.clean", output_dir, max_hours=args.eval_hours)
+        )
 
     if args.cv_en_hours > 0:
         print("\n=== Processing Common Voice English ===")

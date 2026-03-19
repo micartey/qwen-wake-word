@@ -29,6 +29,13 @@ python finetuning/prepare_data.py \
     --librispeech_hours 360 \
     --librispeech_split train.clean.360 \
     --output_dir ./data
+    
+# E.g. for a full german dataset
+python finetuning/prepare_data.py \
+    --cv_en_hours 0 \
+    --cv_de_hours 200 \
+    --librispeech_hours 0 \
+    --output_dir ./data
 ```
 
 ## Finetune
