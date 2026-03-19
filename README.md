@@ -97,7 +97,19 @@ Edit the constants at the top of `wake_word.py`
 
 If you mic does not support a sample rate of 16000 out of the box, you should create a `asoundrc` config.
 
-![img](https://code.micartey.dev/svg?code=Y2F0IDw8ICdFT0YnID4gfi8uYXNvdW5kcmMKcGNtLiFkZWZhdWx0IHsKICAgIHR5cGUgYXN5bQogICAgY2FwdHVyZS5wY20gIm1pY19wbHVnIgp9CgpwY20ubWljX3BsdWcgewogICAgdHlwZSBwbHVnCiAgICBzbGF2ZS5wY20gImh3OjIsMCIKfQpFT0YK)
+```zsh
+cat << 'EOF' > ~/.asoundrc
+pcm.!default {
+    type asym
+    capture.pcm "mic_plug"
+}
+
+pcm.mic_plug {
+    type plug
+    slave.pcm "hw:2,0"
+}
+EOF
+```
 
 _(Run `python -m sounddevice` and replace `hw:2,0` with whatevery your mic is listed as)_
 
