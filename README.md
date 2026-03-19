@@ -76,6 +76,12 @@ source .venv/bin/activate
 python wake_word.py
 ```
 
+When you just want to checkout the model or real-time transcription, run:
+
+```bash
+python stream.py
+```
+
 ### Configuration
 
 Edit the constants at the top of `wake_word.py`
