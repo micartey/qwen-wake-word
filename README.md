@@ -53,8 +53,8 @@ I also wanted to have an alternative to picovoice as they are a very questionabl
 
 ### TODO
 
-- [ ] Create automation for generating the asoundrc config (see below)
-- [ ] API Interface to trigger action, script, service, ...
+- [x] Create automation for generating the asoundrc config (see below)
+- [x] API Interface to trigger action, script, service, ...
 - [ ] Improve timeout detection by forcefully kill the ASR thread
 - [ ] Create v3 of finetuned model using 3:1 or higher mix of librispeech and common voice
 
@@ -74,7 +74,7 @@ Especially to counter possible thermal throttling or damaging of components.
 ```bash
 git clone https://github.com/micartey/qwen-wake-word.git
 cd qwen-wake-word
-nix develop --command python wake-word.py
+nix develop --command python wake_word.py -w "hey sarah" "hi sarah" "hello sarah" -c "echo 'Hello World!'"
 ```
 
 Alternativly run:
@@ -82,29 +82,37 @@ Alternativly run:
 ```bash
 ./setup.sh
 source .venv/bin/activate
-python wake_word.py
+python wake_word.py -w "hey sarah" "hi sarah" "hello sarah" -c "echo 'Hello World!'"
 ```
 
 When you just want to checkout the model or real-time transcription, run:
 
 ```bash
-python stream.py
+python transcribe.py
 ```
 
 ### Configuration
 
-Edit the constants at the top of `wake_word.py`
+#### CLI Flags
 
-| Variable          | Default                          | Description                                   |
-| ----------------- | -------------------------------- | --------------------------------------------- |
-| `WAKE_WORDS`      | `["hey sarah", "hi sarah", ...]` | Wake words / sentences to listen for          |
-| `MAX_DISTANCE`    | `2`                              | Max Levenshtein distance for fuzzy matching   |
-| `CHUNK_SECONDS`   | `1.5`                            | Audio chunk length in seconds                 |
-| `OVERLAP_SECONDS` | `0.75`                           | Overlap between chunks                        |
-| `SAMPLE_RATE`     | `16000`                          | Sample rate of a mic **(DO NOT CHANGE THIS)** |
-| `N_THREADS`       | `2`                              | CPU threads for inference                     |
+| Flag                    | Default                                    | Description                                                         |
+| ----------------------- | ------------------------------------------ | ------------------------------------------------------------------- |
+| `-w` / `--wake-words`   | `"hey sarah"` `"hi sarah"` `"hello sarah"` | Wake word phrases to listen for                                     |
+| `-c` / `--command`      | _none_                                     | Shell command to execute (same thread) when a wake word is detected |
+| `-d` / `--max-distance` | `2`                                        | Max Levenshtein distance for fuzzy matching                         |
+| `--chunk-seconds`       | `1.5`                                      | Audio chunk length in seconds                                       |
+| `--overlap-seconds`     | `0.75`                                     | Overlap between chunks in seconds                                   |
 
-If you mic does not support a sample rate of 16000 out of the box, you should create a `asoundrc` config.
+#### Microphone
+
+If your mic does not support a sample rate of 16000 out of the box, you should create a `asoundrc` config.
+The included script will list all capture devices and generate `~/.asoundrc` for the selected device:
+
+```bash
+./generate-asoundrc.sh
+```
+
+Or create the config manually:
 
 ```zsh
 cat << 'EOF' > ~/.asoundrc
@@ -115,12 +123,12 @@ pcm.!default {
 
 pcm.mic_plug {
     type plug
-    slave.pcm "hw:2,0"
+    slave.pcm "hw:0,0"
 }
 EOF
 ```
 
-_(Run `python -m sounddevice` and replace `hw:2,0` with whatevery your mic is listed as)_
+_(You can use `python -m sounddevice` to list your devices and extract the correct `hw:` value)_
 
 ### Download Model
 

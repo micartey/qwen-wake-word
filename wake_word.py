@@ -8,11 +8,12 @@ import torch
 
 torch.set_num_threads(4)
 
+import argparse
 import queue
 import signal
 import string
+import subprocess
 import sys
-import threading
 import time
 
 import numpy as np
@@ -23,13 +24,13 @@ from py_qwen3_asr_cpp.model import Qwen3ASRModel
 HF_MODEL = "micartey/qwen3-asr-0.6b-english-v2"
 HF_FILENAME = "./qwen3-asr-0.6b-finetuned-q5_k.gguf"
 
+# Defaults and constants
 SAMPLE_RATE = 16000
 CHUNK_SECONDS = 1.5
 OVERLAP_SECONDS = 0.75
 N_THREADS = 2
 WAKE_WORDS = ["hey sarah", "hi sarah", "hello sarah"]
 MAX_DISTANCE = 2
-ASR_TIMEOUT = 1
 
 audio_queue = queue.Queue()
 
@@ -114,30 +115,76 @@ def transcribe_with_timeout(asr_model, audio_segment, timeout=5):
         signal.signal(signal.SIGALRM, original_handler)
 
 
-def check_wake_word(text):
+def check_wake_word(text, wake_words, max_distance):
     transcribed_words = text.lower()
     clean_transcribed_words = transcribed_words.translate(
         str.maketrans("", "", string.punctuation)
     )
 
-    for wake_word in WAKE_WORDS:
+    for wake_word in wake_words:
         target = wake_word.lower()
 
-        if levenshtein(target, clean_transcribed_words) < MAX_DISTANCE:
+        if levenshtein(target, clean_transcribed_words) < max_distance:
             return True
 
     return False
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Wake word detection using Qwen ASR + Silero VAD",
+    )
+    parser.add_argument(
+        "-w",
+        "--wake-words",
+        type=str,
+        nargs="+",
+        default=WAKE_WORDS,
+        help="Wake word phrases to listen for (default: %(default)s)",
+    )
+    parser.add_argument(
+        "-c",
+        "--command",
+        type=str,
+        default=None,
+        help="Shell command to execute (in the same thread) when a wake word is detected",
+    )
+    parser.add_argument(
+        "-d",
+        "--max-distance",
+        type=int,
+        default=MAX_DISTANCE,
+        help="Max Levenshtein distance for fuzzy matching (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--chunk-seconds",
+        type=float,
+        default=CHUNK_SECONDS,
+        help="Audio chunk length in seconds (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--overlap-seconds",
+        type=float,
+        default=OVERLAP_SECONDS,
+        help="Overlap between chunks in seconds (default: %(default)s)",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+    wake_words = [w.lower() for w in args.wake_words]
+
     vad_model, get_speech_timestamps = load_vad_model()
     asr_model = load_asr_model()
 
-    chunk_samples = int(CHUNK_SECONDS * SAMPLE_RATE)
-    overlap_samples = int(OVERLAP_SECONDS * SAMPLE_RATE)
+    chunk_samples = int(args.chunk_seconds * SAMPLE_RATE)
+    overlap_samples = int(args.overlap_seconds * SAMPLE_RATE)
     buffer = np.zeros(0, dtype=np.float32)
 
-    print(f"Listening for wake word: '{WAKE_WORDS}'")
+    print(f"Listening for wake words: {wake_words}")
+    if args.command:
+        print(f"On wake word, will run: {args.command}")
     print("Speak into the microphone... (Ctrl+C to quit)")
 
     with sd.InputStream(
@@ -191,8 +238,12 @@ def main():
 
                 print(f"  [{text}]")
 
-                if check_wake_word(text):
-                    print(">>> Hello World! <<<")
+                if check_wake_word(text, wake_words, args.max_distance):
+                    if args.command:
+                        print(f">>> Wake word detected, running: {args.command}")
+                        subprocess.run(args.command, shell=True)
+                    else:
+                        print(">>> Wake word detected! <<<")
 
         except KeyboardInterrupt:
             print("\nStopped.")
