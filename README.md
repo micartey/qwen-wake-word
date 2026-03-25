@@ -93,6 +93,11 @@ python transcribe.py
 
 ### Configuration
 
+There is a lot you can configure without the need to touch the source code.
+You can specify your own wake words / phrases, configure the chunk length or max levenshtein distance using the following CLI flags when running the script.
+
+Sometimes, you also need additional settings for your microphone, depending on the supported sample rate.
+
 #### CLI Flags
 
 | Flag                    | Default                                    | Description                                                         |
